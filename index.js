@@ -1,40 +1,32 @@
 const express = require('express');
-const { spawn } = require('child_process');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.get('/', (req, res) => {
-  res.send('WaveBox Server is running! 🌊📻');
-});
-
-app.get('/ping', (req, res) => {
-  res.json({ status: 'ok', message: 'WaveBox pong!' });
-});
-
-// Основной стрим: ?url=ССЫЛКА_НА_РАДИО
-// Перекодирует в AAC 64kbps (экономия трафика)
-app.get('/stream', (req, res) => {
+// Простой прокси для радио
+app.get('/stream', async (req, res) => {
   const streamUrl = req.query.url;
   if (!streamUrl) return res.status(400).send('Нужна ссылка на поток: /stream?url=...');
 
-  res.setHeader('Content-Type', 'audio/aac');
-  res.setHeader('Transfer-Encoding', 'chunked');
+  try {
+    // Запрашиваем поток у радиостанции и сразу отдаём клиенту
+    const response = await fetch(streamUrl);
+    if (!response.ok) throw new Error('Ошибка станции');
 
-  // Запускаем ffmpeg для перекодирования
-  const ffmpeg = spawn('ffmpeg', [
-    '-i', streamUrl,
-    '-c:a', 'aac',
-    '-b:a', '64k',
-    '-f', 'adts',
-    'pipe:1'
-  ]);
+    res.setHeader('Content-Type', response.headers.get('content-type') || 'audio/mpeg');
+    res.setHeader('Transfer-Encoding', 'chunked');
 
-  ffmpeg.stdout.pipe(res);
-
-  // Если клиент закрыл соединение — убиваем ffmpeg
-  req.on('close', () => {
-    ffmpeg.kill('SIGKILL');
-  });
+    // Передаём поток частями
+    const reader = response.body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(value);
+    }
+    res.end();
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Ошибка при получении потока');
+  }
 });
 
 app.listen(PORT, () => {
