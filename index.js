@@ -3,9 +3,14 @@ const { createClient } = require('@supabase/supabase-js');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ВШИТЫЕ КЛЮЧИ (для теста)
-const supabaseUrl = 'https://pgvwitrtkpmwbsgrbymu.supabase.co;
-const supabaseKey = 'sb_publishable_S1t0uhFrdIxK0-hPimPOXg_E-MBaHRn'; 
+// Берем ключи из переменных окружения Render
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error("КРИТИЧЕСКАЯ ОШИБКА: Переменные окружения SUPABASE_URL или SUPABASE_ANON_KEY не заданы!");
+  process.exit(1);
+}
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -13,14 +18,16 @@ app.get('/stations', async (req, res) => {
   try {
     const { data, error } = await supabase.from('stations').select('*');
     if (error) throw error;
+    
     const formatted = data.map(s => ({
       name: s.name,
       desc: s.description,
       url: s.url
     }));
+    
     res.json(formatted);
   } catch (err) {
-    console.error(err);
+    console.error("Ошибка при запросе к Supabase:", err);
     res.status(500).json({ error: 'Ошибка загрузки станций' });
   }
 });
